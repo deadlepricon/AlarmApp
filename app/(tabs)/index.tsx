@@ -1,70 +1,235 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+// app/index.tsx
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  FlatList,
+  ListRenderItem,
+} from "react-native";
+import DateDisplay from "@/components/DateDisplay";
+import Clock from "@/components/Clock";
+import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Notifications from "expo-notifications";
+import { useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Swipeable } from "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { Switch } from "react-native";
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+interface Alarm {
+  id: string;
+  time: string; // ISO string representation of the scheduled time
+  status: boolean;
+}
 
-export default function HomeScreen() {
+export default function Home() {
+  const router = useRouter();
+  const [alarms, setAlarms] = useState<Alarm[]>([]);
+
+  const fetchAlarms = async () => {
+    try {
+      const storedAlarms = await AsyncStorage.getItem("alarms");
+      const alarms = storedAlarms ? JSON.parse(storedAlarms) : [];
+      setAlarms(alarms);
+    } catch (error) {
+      console.error("Error loading alarms:", error);
+    }
+  };
+
+  // Fetch alarms when the component mounts
+  useEffect(() => {
+    fetchAlarms();
+  }, []);
+
+  // Re-fetch alarms when the screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchAlarms();
+    }, [])
+  );
+
+  const colors = ["#9d00ff", "#FFA500", "#6bff00"]; // Purple, Orange, Green
+  const gradients = [
+    ["#8A2BE2", "#4B0082"], // Gradient from Purple to Indigo
+    ["#FFA500", "#FF6347"], // Gradient from Orange to Tomato
+    ["#32CD32", "#228B22"], // Gradient from LimeGreen to ForestGreen
+  ];
+
+  const renderAlarmItem: ListRenderItem<Alarm> = ({ item, index }) => {
+    const alarmDate = new Date(item.time);
+    const timeString = alarmDate.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const toggleAlarmStatus = async () => {
+      try {
+        const updatedAlarms = alarms.map((alarm) =>
+          alarm.id === item.id ? { ...alarm, status: !alarm.status } : alarm
+        );
+        await AsyncStorage.setItem("alarms", JSON.stringify(updatedAlarms));
+        setAlarms(updatedAlarms);
+      } catch (error) {
+        console.error("Error updating alarm status:", error);
+      }
+    };
+
+    const deleteAlarm = async () => {
+      await Notifications.cancelScheduledNotificationAsync(item.id);
+      try {
+        const storedAlarms = await AsyncStorage.getItem("alarms");
+        const alarms = storedAlarms ? JSON.parse(storedAlarms) : [];
+        const updatedAlarms = alarms.filter(
+          (alarm: Alarm) => alarm.id !== item.id
+        );
+        await AsyncStorage.setItem("alarms", JSON.stringify(updatedAlarms));
+        setAlarms(updatedAlarms);
+      } catch (error) {
+        console.error("Error deleting alarm:", error);
+      }
+    };
+
+    const renderRightActions = () => (
+      <TouchableOpacity
+        onPress={deleteAlarm}
+        style={styles.deleteButtonContainer}
+      >
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </TouchableOpacity>
+    );
+
+    return (
+      <Swipeable renderRightActions={renderRightActions}>
+        <LinearGradient
+          colors={gradients[index % gradients.length]} // Set gradient colors based on index
+          style={styles.gradientContainer}
+        >
+          <View style={styles.alarmItem}>
+            <Text style={styles.alarmText}>{timeString}</Text>
+            <Switch
+              value={item.status}
+              onValueChange={toggleAlarmStatus}
+              trackColor={{ false: "#767577", true: "#767577" }}
+              thumbColor={
+                item.status ? colors[index % colors.length] : "#f4f3f4"
+              }
+            />
+          </View>
+        </LinearGradient>
+      </Swipeable>
+    );
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <GestureHandlerRootView style={styles.container}>
+      <View style={styles.datetimeContainer}>
+        <DateDisplay />
+        <Clock />
+      </View>
+
+      <LinearGradient
+        colors={["#6e00b3", "#9d00ff", "#6e00b3"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.button}
+      >
+        <TouchableOpacity
+          onPress={() => router.push("addAlarm")}
+          style={styles.touchableArea}
+        >
+          <Text style={styles.buttonText}>New Alarm</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+
+      <View style={styles.alarmListContainer}>
+        <Text style={styles.alarmListTitle}>Scheduled Alarms:</Text>
+        <FlatList
+          data={alarms}
+          keyExtractor={(item) => item.id}
+          renderItem={renderAlarmItem}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({ ios: 'cmd + d', android: 'cmd + m' })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  // ... existing styles ...
+  container: {
+    flex: 1,
+    alignItems: "center",
+    paddingTop: 60,
+    backgroundColor: "#16161d",
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  datetimeContainer: {
+    alignItems: "center",
+    marginBottom: 20,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  button: {
+    borderRadius: 8,
+    overflow: "hidden",
+    marginTop: 20,
+  },
+  touchableArea: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  alarmListContainer: {
+    marginTop: 20,
+    width: "80%",
+  },
+  alarmListTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 10,
+    color: "white",
+  },
+  alarmItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 2,
+    borderRadius: 20,
+  },
+  alarmText: {
+    fontSize: 18,
+    color: "white",
+  },
+  deleteButton: {
+    backgroundColor: "#FF4500",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  deleteButtonContainer: {
+    backgroundColor: "#FF4500",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    width: 90,
+    height: 53,
+    // Ensure the delete button covers the full height of the item
+    marginVertical: 5,
+    borderRadius: 20,
+  },
+  deleteButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    paddingHorizontal: 20,
+  },
+  gradientContainer: {
+    borderRadius: 20,
+    marginVertical: 5,
+    overflow: "hidden",
   },
 });
